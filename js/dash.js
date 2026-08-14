@@ -32,6 +32,16 @@ function stockAt(fid,itemId,ts){
 }
 
 /* ---------- Барааны түүх ---------- */
+function stockAtBoth(fid,itemId,ts){
+  let kg=0,pcs=0;
+  db.log.forEach(e=>{
+    if(e.fridge!==fid || e.item!==itemId || e.ts>ts) return;
+    const s=e.action==="in"?1:-1;
+    kg+=s*(e.kg||0); pcs+=s*(e.pcs||0);
+  });
+  return {kg:num(kg), pcs:pcs};
+}
+
 const IH = () => state.itemHist;
 export function openItemHist(itemId){
   IH().item=itemId;
@@ -64,39 +74,43 @@ export function renderItemHist(){
   const label = oneDay ? dateStr(new Date(fromIso+"T00:00:00"))
     : dateStr(new Date(fromIso+"T00:00:00"))+" – "+dateStr(new Date(toIso+"T00:00:00"));
 
-  let opening=0;
-  db.fridges.forEach(fr=>{ opening+=stockAt(fr.id,id,fromTs-1); });
+  let openKg=0, openPcs=0;
+  db.fridges.forEach(fr=>{
+    const s=stockAtBoth(fr.id,id,fromTs-1);
+    openKg+=s.kg; openPcs+=s.pcs;
+  });
 
   const rows=db.log.filter(e=>e.item===id && e.ts>=fromTs && e.ts<=toTs).sort((a,b)=>a.ts-b.ts);
   if(!rows.length){
     $("ihBody").innerHTML=`<div class="card"><div class="empty">${oneDay?"Энэ өдөр":"Энэ хугацаанд"} хөдөлгөөн байхгүй.<br>
-      Эхний үлдэгдэл: <b>${num(opening)} ${uShort(mainUnitOf(id))}</b></div></div>`;
+      Эхний үлдэгдэл: <b>${qtyLine(openKg,openPcs,id)}</b></div></div>`;
     return;
   }
-  let run=num(opening), tin=0, tout=0;
+  let runKg=num(openKg), runPcs=openPcs, tinKg=0, tinPcs=0, toutKg=0, toutPcs=0;
   const body=rows.map(e=>{
-    const q = mainUnitOf(id)==="pcs" ? (e.pcs||0) : num(e.kg||0);
+    const kg=e.kg||0, pcs=e.pcs||0;
     const isIn = e.action==="in";
-    run = num(run + (isIn?q:-q));
-    if(isIn) tin+=q; else tout+=q;
+    runKg = num(runKg + (isIn?kg:-kg));
+    runPcs = runPcs + (isIn?pcs:-pcs);
+    if(isIn){ tinKg+=kg; tinPcs+=pcs; } else { toutKg+=kg; toutPcs+=pcs; }
     const src = isIn ? (e.purchase?"Гаднаас авсан":("Оруулсан"+(e.worker?" · "+workerName(e.worker):"")))
                      : (e.receipt?"Гаргасан · баримттай":"Гаргасан");
     return `<tr>
       <td class="dim">${dateStr(new Date(e.ts))}<div class="dim">${timeStr(new Date(e.ts))}</div></td>
       <td class="nm">${esc(fridgeName(e.fridge))}<div class="dim">${esc(src)}</div></td>
-      <td class="num" style="color:${isIn?"var(--moss)":"var(--rust)"}">${isIn?"+":"−"}${q}</td>
-      <td class="amt">${run}</td></tr>`;
+      <td class="num" style="color:${isIn?"var(--moss)":"var(--rust)"}">${isIn?"+":"−"}${qtyLine(kg,pcs,id)}</td>
+      <td class="amt">${qtyLine(runKg,runPcs,id)}</td></tr>`;
   }).join("");
 
   $("ihBody").innerHTML=`<div class="card">
     <h3>${label}</h3>
     <div class="item-row"><span class="item-name">Эхэнд</span>
-      <span class="item-val">${num(opening)} ${uShort(mainUnitOf(id))}</span></div>
+      <span class="item-val">${qtyLine(openKg,openPcs,id)}</span></div>
     <div class="item-row"><span class="item-name">Орсон</span>
-      <span class="item-val mv-in">+${num(tin)}</span></div>
+      <span class="item-val mv-in">+${qtyLine(tinKg,tinPcs,id)}</span></div>
     <div class="item-row"><span class="item-name">Гарсан</span>
-      <span class="item-val mv-out">−${num(tout)}</span></div>
-    <div class="total-line"><span>Эцэст</span><b>${run} ${uShort(mainUnitOf(id))}</b></div>
+      <span class="item-val mv-out">−${qtyLine(toutKg,toutPcs,id)}</span></div>
+    <div class="total-line"><span>Эцэст</span><b>${qtyLine(runKg,runPcs,id)}</b></div>
   </div>
   <div class="card"><h3>Хөдөлгөөн бүрээр</h3>
     <div class="tbl-wrap"><table class="tbl" style="min-width:360px">
