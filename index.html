@@ -124,8 +124,11 @@
 <div class="screen" id="scrItemHist">
   <div class="bar"><button class="back" onclick="openDash()">Буцах</button><h2 id="ihTitle"></h2></div>
   <div class="card">
-    <h3>Огноо</h3>
-    <input type="date" class="date-in" id="ihDate" onchange="setItemHistDate(this.value)">
+    <h3>Хугацаа</h3>
+    <div class="row-2">
+      <input type="date" class="date-in" id="ihFrom" onchange="setItemHistFrom(this.value)">
+      <input type="date" class="date-in" id="ihTo" onchange="setItemHistTo(this.value)">
+    </div>
   </div>
   <div id="ihBody"></div>
 </div>
