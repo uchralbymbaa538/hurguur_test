@@ -1,7 +1,7 @@
 /* Хяналтын самбар — өдрийн зураглал */
 import { db, state } from './state.js';
-import { esc, num, isoStr, isoMonth, timeStr, dateStr, dayKey, dayKeyOfIso,
-         monthKey, monthKeyOfIso, qtyLine, itemName, money, liveItems, workerName,
+import { esc, num, isoStr, timeStr, dateStr, dayKey, dayKeyOfIso,
+         qtyLine, itemName, money, liveItems, workerName,
          payFor, lQty, lUnit, uShort, stock, fridgeName, mainUnitOf } from './util.js';
 import { $, toast } from './ui.js';
 import { show, registerScreen } from './router.js';
@@ -35,26 +35,26 @@ function stockAt(fid,itemId,ts){
 const IH = () => state.itemHist;
 export function openItemHist(itemId){
   IH().item=itemId;
-  IH().month = IH().month || isoMonth();
-  $("ihMonth").value=IH().month;
+  IH().date = DASH().date || isoStr();
+  const el=$("ihDate"); el.value=IH().date; el.max=isoStr();
   renderItemHist(); show("scrItemHist");
 }
-export function setItemHistMonth(v){ IH().month = v || isoMonth(); renderItemHist(); }
+export function setItemHistDate(v){ IH().date = v || isoStr(); renderItemHist(); }
 export function renderItemHist(){
   const id=IH().item;
   if(!id){ show("scrDash"); return; }
   $("ihTitle").textContent=itemName(id);
-  const mk=monthKeyOfIso(IH().month||isoMonth());
-  const a=(IH().month||isoMonth()).split("-");
-  const monthStart=new Date(+a[0],+a[1]-1,1).getTime();
+  const iso=IH().date||isoStr();
+  const dk=dayKeyOfIso(iso);
+  const dayStart=new Date(iso+"T00:00:00").getTime();
 
   let opening=0;
-  db.fridges.forEach(fr=>{ opening+=stockAt(fr.id,id,monthStart-1); });
+  db.fridges.forEach(fr=>{ opening+=stockAt(fr.id,id,dayStart-1); });
 
-  const rows=db.log.filter(e=>e.item===id && monthKey(e.ts)===mk).sort((a,b)=>a.ts-b.ts);
+  const rows=db.log.filter(e=>e.item===id && dayKey(e.ts)===dk).sort((a,b)=>a.ts-b.ts);
   if(!rows.length){
-    $("ihBody").innerHTML=`<div class="card"><div class="empty">Энэ сард хөдөлгөөн байхгүй.<br>
-      Сарын эхний үлдэгдэл: <b>${num(opening)} ${uShort(mainUnitOf(id))}</b></div></div>`;
+    $("ihBody").innerHTML=`<div class="card"><div class="empty">Энэ өдөр хөдөлгөөн байхгүй.<br>
+      Өдрийн эхний үлдэгдэл: <b>${num(opening)} ${uShort(mainUnitOf(id))}</b></div></div>`;
     return;
   }
   let run=num(opening), tin=0, tout=0;
@@ -66,25 +66,25 @@ export function renderItemHist(){
     const src = isIn ? (e.purchase?"Гаднаас авсан":("Оруулсан"+(e.worker?" · "+workerName(e.worker):"")))
                      : (e.receipt?"Гаргасан · баримттай":"Гаргасан");
     return `<tr>
-      <td class="dim">${dateStr(new Date(e.ts))}<div class="dim">${timeStr(new Date(e.ts))}</div></td>
+      <td class="dim">${timeStr(new Date(e.ts))}</td>
       <td class="nm">${esc(fridgeName(e.fridge))}<div class="dim">${esc(src)}</div></td>
       <td class="num" style="color:${isIn?"var(--moss)":"var(--rust)"}">${isIn?"+":"−"}${q}</td>
       <td class="amt">${run}</td></tr>`;
   }).join("");
 
   $("ihBody").innerHTML=`<div class="card">
-    <h3>${a[0]} оны ${+a[1]}-р сар</h3>
-    <div class="item-row"><span class="item-name">Сарын эхэнд</span>
+    <h3>${dateStr(new Date(iso+"T00:00:00"))}</h3>
+    <div class="item-row"><span class="item-name">Өдрийн эхэнд</span>
       <span class="item-val">${num(opening)} ${uShort(mainUnitOf(id))}</span></div>
     <div class="item-row"><span class="item-name">Орсон</span>
       <span class="item-val mv-in">+${num(tin)}</span></div>
     <div class="item-row"><span class="item-name">Гарсан</span>
       <span class="item-val mv-out">−${num(tout)}</span></div>
-    <div class="total-line"><span>Сарын эцэст</span><b>${run} ${uShort(mainUnitOf(id))}</b></div>
+    <div class="total-line"><span>Өдрийн эцэст</span><b>${run} ${uShort(mainUnitOf(id))}</b></div>
   </div>
   <div class="card"><h3>Хөдөлгөөн бүрээр</h3>
-    <div class="tbl-wrap"><table class="tbl" style="min-width:360px">
-      <thead><tr><th>Огноо</th><th>Хаана</th><th class="num">Хэмжээ</th><th class="num">Үлдэгдэл</th></tr></thead>
+    <div class="tbl-wrap"><table class="tbl" style="min-width:340px">
+      <thead><tr><th>Цаг</th><th>Хаана</th><th class="num">Хэмжээ</th><th class="num">Үлдэгдэл</th></tr></thead>
       <tbody>${body}</tbody></table></div></div>`;
 }
 registerScreen("scrItemHist", renderItemHist);
