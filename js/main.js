@@ -1,6 +1,7 @@
 /* Бүх модулийг холбож, HTML доторх onclick-д хэрэгтэй функцуудыг нээнэ.
    Шинэ функц нэмэхдээ эндээ бүртгэхээ бүү мартаарай. */
 import { loadLocal } from './state.js';
+import { ensureSignedIn } from './firebase.js';
 import * as UI       from './ui.js';
 import * as Router   from './router.js';
 import * as Picker   from './picker.js';
@@ -16,13 +17,22 @@ import * as Records  from './records.js';
 import * as Salary   from './salary.js';
 import * as Settings from './settings.js';
 
-loadLocal();
-
 Object.assign(window,
   { show:Router.show, toggleSel:UI.toggleSel, chooseSel:UI.chooseSel },
   { pickToggle:Picker.pickToggle, pickSet:Picker.pickSet, pickAll:Picker.pickAll },
   Auth, Fridge, Entry, Buy, Out, Receipt, Dash, Debt, Records, Salary, Settings
 );
 
-Auth.initLogin();
-Auth.renderHome();
+// Firebase-тэй холбогдох хүртэл "Сервертэй холбогдож байна…" гэсэн
+// төлөвт байлгаад, холбогдмогц нэвтрэх дэлгэцийг бэлдэнэ.
+ensureSignedIn()
+  .then(() => {
+    loadLocal();
+    Auth.initLogin();
+    Auth.renderHome();
+  })
+  .catch((err) => {
+    console.error("Firebase холболтын алдаа:", err);
+    // Firebase Console дээр Authentication → Sign-in method → Anonymous
+    // идэвхжээгүй бол энд байнга алдаа өгнө.
+  });
