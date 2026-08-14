@@ -15,6 +15,62 @@
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.17.1/firebase-analytics.js">
 <link rel="stylesheet" href="css/app.css">
 
+<!-- ============ FIREBASE ЭХЛҮҮЛЭХ ============ -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-analytics.js";
+  import {
+    getAuth, signInAnonymously, onAuthStateChanged
+  } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
+  import {
+    getFirestore, doc, getDoc, setDoc, collection,
+    addDoc, updateDoc, deleteDoc, onSnapshot, query
+  } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDljqSMsRZOABFCIS8K7xu1CEFLWBsjzRQ",
+    authDomain: "hurguur-test.firebaseapp.com",
+    projectId: "hurguur-test",
+    storageBucket: "hurguur-test.firebasestorage.app",
+    messagingSenderId: "710633544124",
+    appId: "1:710633544124:web:ce512a5856d652675b73b9",
+    measurementId: "G-77PK4SVG2V"
+  };
+
+  const app       = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+  const auth      = getAuth(app);
+  const db        = getFirestore(app);
+
+  // Хэрэглэгчийг нэргүйгээр (anonymous) нэвтрүүлнэ.
+  // PIN шалгах өөрийн логикоо (4 оронтой код) main.js/auth.js дотроо хэвээр хадгална.
+  function ensureSignedIn() {
+    return new Promise((resolve, reject) => {
+      onAuthStateChanged(auth, (user) => {
+        if (user) {
+          resolve(user);
+        } else {
+          signInAnonymously(auth)
+            .then((cred) => resolve(cred.user))
+            .catch((err) => reject(err));
+        }
+      });
+    });
+  }
+
+  // js/main.js доторх код window.__firebase-ээс уншиж ашиглана.
+  window.__firebase = {
+    app, analytics, auth, db, ensureSignedIn,
+    doc, getDoc, setDoc, collection, addDoc, updateDoc, deleteDoc, onSnapshot, query
+  };
+
+  // main.js-г Firebase бэлэн болсны дараа ачаална.
+  const mainScript = document.createElement('script');
+  mainScript.type = 'module';
+  mainScript.src = 'js/main.js';
+  document.body.appendChild(mainScript);
+</script>
+
 </head>
 <body>
 
@@ -413,8 +469,5 @@
 
 <div id="toast"></div>
 
-
-
-<script type="module" src="js/main.js"></script>
 </body>
 </html>
