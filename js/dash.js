@@ -35,26 +35,42 @@ function stockAt(fid,itemId,ts){
 const IH = () => state.itemHist;
 export function openItemHist(itemId){
   IH().item=itemId;
-  IH().date = DASH().date || isoStr();
-  const el=$("ihDate"); el.value=IH().date; el.max=isoStr();
+  const d = DASH().date || isoStr();
+  IH().from = IH().from || d;
+  IH().to   = IH().to   || d;
+  const f=$("ihFrom"), t=$("ihTo");
+  f.value=IH().from; f.max=isoStr();
+  t.value=IH().to;   t.max=isoStr();
   renderItemHist(); show("scrItemHist");
 }
-export function setItemHistDate(v){ IH().date = v || isoStr(); renderItemHist(); }
+export function setItemHistFrom(v){
+  IH().from = v || isoStr();
+  if(IH().from > IH().to){ IH().to = IH().from; $("ihTo").value=IH().to; }
+  renderItemHist();
+}
+export function setItemHistTo(v){
+  IH().to = v || isoStr();
+  if(IH().to < IH().from){ IH().from = IH().to; $("ihFrom").value=IH().from; }
+  renderItemHist();
+}
 export function renderItemHist(){
   const id=IH().item;
   if(!id){ show("scrDash"); return; }
   $("ihTitle").textContent=itemName(id);
-  const iso=IH().date||isoStr();
-  const dk=dayKeyOfIso(iso);
-  const dayStart=new Date(iso+"T00:00:00").getTime();
+  const fromIso=IH().from||isoStr(), toIso=IH().to||isoStr();
+  const fromTs=new Date(fromIso+"T00:00:00").getTime();
+  const toTs=new Date(toIso+"T23:59:59").getTime();
+  const oneDay=fromIso===toIso;
+  const label = oneDay ? dateStr(new Date(fromIso+"T00:00:00"))
+    : dateStr(new Date(fromIso+"T00:00:00"))+" – "+dateStr(new Date(toIso+"T00:00:00"));
 
   let opening=0;
-  db.fridges.forEach(fr=>{ opening+=stockAt(fr.id,id,dayStart-1); });
+  db.fridges.forEach(fr=>{ opening+=stockAt(fr.id,id,fromTs-1); });
 
-  const rows=db.log.filter(e=>e.item===id && dayKey(e.ts)===dk).sort((a,b)=>a.ts-b.ts);
+  const rows=db.log.filter(e=>e.item===id && e.ts>=fromTs && e.ts<=toTs).sort((a,b)=>a.ts-b.ts);
   if(!rows.length){
-    $("ihBody").innerHTML=`<div class="card"><div class="empty">Энэ өдөр хөдөлгөөн байхгүй.<br>
-      Өдрийн эхний үлдэгдэл: <b>${num(opening)} ${uShort(mainUnitOf(id))}</b></div></div>`;
+    $("ihBody").innerHTML=`<div class="card"><div class="empty">${oneDay?"Энэ өдөр":"Энэ хугацаанд"} хөдөлгөөн байхгүй.<br>
+      Эхний үлдэгдэл: <b>${num(opening)} ${uShort(mainUnitOf(id))}</b></div></div>`;
     return;
   }
   let run=num(opening), tin=0, tout=0;
@@ -66,25 +82,25 @@ export function renderItemHist(){
     const src = isIn ? (e.purchase?"Гаднаас авсан":("Оруулсан"+(e.worker?" · "+workerName(e.worker):"")))
                      : (e.receipt?"Гаргасан · баримттай":"Гаргасан");
     return `<tr>
-      <td class="dim">${timeStr(new Date(e.ts))}</td>
+      <td class="dim">${dateStr(new Date(e.ts))}<div class="dim">${timeStr(new Date(e.ts))}</div></td>
       <td class="nm">${esc(fridgeName(e.fridge))}<div class="dim">${esc(src)}</div></td>
       <td class="num" style="color:${isIn?"var(--moss)":"var(--rust)"}">${isIn?"+":"−"}${q}</td>
       <td class="amt">${run}</td></tr>`;
   }).join("");
 
   $("ihBody").innerHTML=`<div class="card">
-    <h3>${dateStr(new Date(iso+"T00:00:00"))}</h3>
-    <div class="item-row"><span class="item-name">Өдрийн эхэнд</span>
+    <h3>${label}</h3>
+    <div class="item-row"><span class="item-name">Эхэнд</span>
       <span class="item-val">${num(opening)} ${uShort(mainUnitOf(id))}</span></div>
     <div class="item-row"><span class="item-name">Орсон</span>
       <span class="item-val mv-in">+${num(tin)}</span></div>
     <div class="item-row"><span class="item-name">Гарсан</span>
       <span class="item-val mv-out">−${num(tout)}</span></div>
-    <div class="total-line"><span>Өдрийн эцэст</span><b>${run} ${uShort(mainUnitOf(id))}</b></div>
+    <div class="total-line"><span>Эцэст</span><b>${run} ${uShort(mainUnitOf(id))}</b></div>
   </div>
   <div class="card"><h3>Хөдөлгөөн бүрээр</h3>
-    <div class="tbl-wrap"><table class="tbl" style="min-width:340px">
-      <thead><tr><th>Цаг</th><th>Хаана</th><th class="num">Хэмжээ</th><th class="num">Үлдэгдэл</th></tr></thead>
+    <div class="tbl-wrap"><table class="tbl" style="min-width:360px">
+      <thead><tr><th>Огноо</th><th>Хаана</th><th class="num">Хэмжээ</th><th class="num">Үлдэгдэл</th></tr></thead>
       <tbody>${body}</tbody></table></div></div>`;
 }
 registerScreen("scrItemHist", renderItemHist);
