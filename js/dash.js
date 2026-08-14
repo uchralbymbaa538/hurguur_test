@@ -9,6 +9,15 @@ import { requireOnline } from './auth.js';
 
 const DASH = () => state.dash;
 
+/* Сонгосон огноог өнөөдөр/өчигдөртэй харьцуулж тохирох гарчиг өгнө */
+function dayLabel(){
+  const iso=DASH().date||isoStr();
+  if(iso===isoStr()) return "Өнөөдөр";
+  const y=new Date(); y.setDate(y.getDate()-1);
+  if(iso===isoStr(y)) return "Өчигдөр";
+  return dateStr(new Date(iso+"T00:00:00"));
+}
+
 export function openDash(){
   if(!state.isAdmin){ toast("Энэ хэсэг зөвхөн админд нээлттэй"); return; }
   if(!requireOnline()) return;
@@ -110,6 +119,10 @@ registerScreen("scrItemHist", renderItemHist);
 
 export function renderDash(){
   const dk=dayKeyOfIso(DASH().date||isoStr());
+  const lbl=dayLabel();
+  $("dashInTitle").textContent   = lbl+" орсон";
+  $("dashOutTitle").textContent  = lbl+" гарсан";
+  $("dashDestTitle").textContent = "Хаашаа гарсан · "+lbl;
 
   /* Сонгосон өдрийн эцсийн үлдэгдэл ба тэр өдрийн өмнөх үлдэгдэл.
      Барааны нэр дээр дарвал тухайн барааны түүх нээгдэнэ. */
