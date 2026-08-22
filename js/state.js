@@ -22,7 +22,7 @@ export function defaults(){
     ],
     workers:[{id:uid(),name:"Ажилчин 1",rates:{},payType:"piece",salary:0}],
     partners:[], persons:[], receipts:[], purchases:[], log:[], audits:[],
-    settlements:[], wagepays:[], works:[], attend:[]
+    settlements:[], wagepays:[], works:[], attend:[], counts:[]
   };
 }
 function itemDefaults(name,track){
@@ -51,6 +51,7 @@ export function normalize(){
   db.wagepays   = db.wagepays   || [];
   db.works      = db.works      || [];
   db.attend     = db.attend     || [];   /* тогтмол цалинтай ажилчдын ирц */
+  db.counts     = db.counts     || [];   /* тооллого */
   db.items      = db.items      || [];
   db.workers    = db.workers    || [];
   db.receiptNo  = db.receiptNo  || 0;
@@ -106,6 +107,7 @@ export const state = {
   attend:{ date:null, workers:[] },
   cart:{ partner:null, partnerKind:null, issuer:null, items:{}, pcs:{}, per:{}, sacks:{}, editId:null },
   buy:{ date:null, fridge:1, supplier:null, supplierKind:null, items:{}, prices:{} },
+  qbuy:{ date:null, supplier:null, supplierKind:null, item:"", qty:"", price:"" },
   salary:{ period:"day", open:null, date:null, month:null },
   records:{ month:null, fridge:1, openDay:null },
   itemHist:{ item:null, from:null, to:null },
@@ -114,6 +116,7 @@ export const state = {
   rateWorker:null,
   partyOpen:null,
   fiFridge:1,
-  receipt:{ current:null },
-  busy:{ entry:false, buy:false, receipt:false, work:false, attend:false }
+  receipt:{ current:null, kind:"sale" },
+  count:{ item:null, vals:[""] },
+  busy:{ entry:false, buy:false, qbuy:false, receipt:false, work:false, attend:false, count:false }
 };
