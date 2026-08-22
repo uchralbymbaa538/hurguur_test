@@ -61,6 +61,7 @@ export function checkCode(){
 }
 export function logout(){
   state.isAdmin=false;
+  state.salaryUnlocked=false;
   show("scrLogin");
   inputs.forEach(i=>i.value=""); inputs[0].focus();
 }
