@@ -68,6 +68,7 @@
 <body>
 
  
+ 
 <!-- ============ НЭВТРЭХ ============ -->
 <div class="screen active" id="scrLogin">
   <div class="login-box">
@@ -99,8 +100,9 @@
     <button class="btn btn-in" onclick="openDash()" id="btnDash">Хяналтын самбар</button>
     <button class="btn" onclick="openFridge(1)" id="btnF1">1-р хөргүүр</button>
     <button class="btn" onclick="openFridge(2)" id="btnF2">2-р хөргүүр</button>
-    <button class="btn" onclick="openBuy()" id="btnBuy">Гаднаас худалдаж авсан</button>
+    <button class="btn" onclick="openBuyChoice()" id="btnBuy">Гаднаас худалдаж авсан</button>
     <button class="btn" onclick="openSalary()">Цалин</button>
+    <button class="btn" onclick="openCount()">Тоолох</button>
     <button class="btn" onclick="openAdmin()" id="btnAdmin">Тохиргоо</button>
   </div>
   <button class="logout" onclick="logout()">Гарах</button>
@@ -170,9 +172,59 @@
   <div class="save-wrap"><button class="btn btn-in" id="entrySave" onclick="saveEntry()">Хадгалах</button></div>
 </div>
  
+<!-- ============ ГАДНААС АВАХ АРГАА СОНГОХ ============ -->
+<div class="screen" id="scrBuyChoice">
+  <div class="bar"><button class="back" onclick="goHome()">Буцах</button><h2>Гаднаас авсан</h2></div>
+  <div class="card">
+    <h3>Хэрхэн бүртгэх вэ</h3>
+    <div class="menu">
+      <button class="btn btn-in" onclick="openQuickBuy()">Ангилал хийж хөргүүрт оруулах</button>
+      <button class="btn" onclick="openBuy()">Шууд хөргүүрт оруулах</button>
+    </div>
+  </div>
+</div>
+ 
+<!-- ============ ШУУД ХӨРГҮҮРТ ОРУУЛАХ ============ -->
+<div class="screen" id="scrQuickBuy">
+  <div class="bar"><button class="back" onclick="openBuyChoice()">Буцах</button><h2>Шууд оруулах</h2></div>
+  <div class="card">
+    <h3>Огноо</h3>
+    <input type="date" class="date-in" id="qbDate" onchange="setQbDate(this.value)">
+  </div>
+  <div class="card">
+    <p class="label">Хэнээс авсан</p>
+    <div class="sel" id="sel_qbsupplier"></div>
+    <div class="stack" id="qbOrgBox" style="display:none;margin-top:12px">
+      <input type="text" id="qbsName" placeholder="Байгууллагын нэр">
+      <input type="text" id="qbsReg" placeholder="Регистрийн дугаар">
+      <input type="tel"  id="qbsPhone" placeholder="Утас">
+      <button class="btn btn-in btn-sm" onclick="addQbOrgInline()">Нэмээд сонгох</button>
+    </div>
+    <div class="stack" id="qbPersonBox" style="display:none;margin-top:12px">
+      <input type="text" id="qbpName" placeholder="Хувь хүний нэр">
+      <input type="tel"  id="qbpPhone" placeholder="Утас">
+      <button class="btn btn-in btn-sm" onclick="addQbPersonInline()">Нэмээд сонгох</button>
+    </div>
+  </div>
+  <div class="card">
+    <p class="label">Юу авсан бэ</p>
+    <div class="row-2" style="align-items:stretch;margin-bottom:0">
+      <input type="text" class="search-in" id="qbItem" style="flex:2" placeholder="Жишээ: гахайн мах"
+             oninput="setQbItem(this.value)">
+      <input type="number" class="num-in" inputmode="decimal" min="0" id="qbQty" style="flex:1;text-align:left" placeholder="Тоо хэмжээ"
+             oninput="setQbQty(this.value)">
+    </div>
+    <p class="label" style="margin-top:14px">Үнийн дүн</p>
+    <input type="number" class="num-in" inputmode="decimal" min="0" id="qbPrice" style="text-align:left" placeholder="₮"
+           oninput="setQbPrice(this.value)">
+    <div id="qbTotal"></div>
+  </div>
+  <div class="save-wrap"><button class="btn btn-in" id="qbSave" onclick="saveQuickBuy()">Хадгалах</button></div>
+</div>
+ 
 <!-- ============ ГАДНААС ХУДАЛДАЖ АВСАН ============ -->
 <div class="screen" id="scrBuy">
-  <div class="bar"><button class="back" onclick="goHome()">Буцах</button><h2>Гаднаас авсан</h2></div>
+  <div class="bar"><button class="back" onclick="openBuyChoice()">Буцах</button><h2>Гаднаас авсан</h2></div>
   <div class="card">
     <h3>Огноо</h3>
     <input type="date" class="date-in" id="buyDate" onchange="setBuyDate(this.value)">
@@ -247,11 +299,11 @@
  
 <!-- ============ БАРИМТ ============ -->
 <div class="screen" id="scrReceipt">
-  <div class="bar"><button class="back" onclick="closeReceipt()">Буцах</button><h2>Төлбөрийн баримт</h2></div>
+  <div class="bar"><button class="back" onclick="closeReceipt()">Буцах</button><h2 id="rcTitle">Төлбөрийн баримт</h2></div>
   <div id="rcBody"></div>
   <div class="row-2 no-print">
     <button class="btn btn-in btn-sm" onclick="printReceipt()">2 хувь хэвлэх</button>
-    <button class="btn btn-sm" onclick="editCurrentReceipt()">Засах</button>
+    <button class="btn btn-sm" id="rcEditBtn" onclick="editCurrentReceipt()">Засах</button>
     <button class="btn btn-sm" onclick="closeReceipt()">Хаах</button>
   </div>
 </div>
@@ -391,6 +443,29 @@
     <div id="workTotal"></div>
   </div>
   <div class="save-wrap"><button class="btn btn-in" id="workSave" onclick="saveWork()">Хадгалах</button></div>
+</div>
+ 
+<!-- ============ ТООЛОХ ============ -->
+<div class="screen" id="scrCount">
+  <div class="bar"><button class="back" onclick="goHome()">Буцах</button><h2>Тоолох</h2></div>
+  <div class="card">
+    <h3>Ангилал сонгоно уу</h3>
+    <div class="scroll-box" id="countList"></div>
+  </div>
+</div>
+ 
+<div class="screen" id="scrCountEntry">
+  <div class="bar"><button class="back" onclick="openCount()">Буцах</button><h2 id="cntTitle">Тоолох</h2></div>
+  <div class="card">
+    <h3>Тоолсон тоонууд</h3>
+    <div class="cnt-grid" id="cntRows"></div>
+    <div id="cntTotal"></div>
+  </div>
+  <div class="save-wrap"><button class="btn btn-in" id="cntSave" onclick="saveCount()">Хадгалах</button></div>
+  <div class="card">
+    <h3>Өмнөх тооллого</h3>
+    <div class="scroll-box" id="cntHist"></div>
+  </div>
 </div>
  
 <!-- ============ ТОХИРГОО ============ -->
