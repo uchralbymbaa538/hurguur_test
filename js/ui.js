@@ -44,13 +44,80 @@ export function chooseSel(name,id){
   if(fn) fn(id);
 }
 
+/* --- Олон сонголт хийдэг dropdown ---
+   Ижил "sel" гадаад төрхтэй, гэхдээ сонголт хийхэд хаагдахгүй, олон
+   зүйл дараалан тэмдэглэх боломжтой. Толгой хэсэгт сонгосон бүх нэр
+   таслалаар харагдана. */
+export const onMultiChoose = {};
+export function toggleMultiSel(name,id){
+  const fn=onMultiChoose[name];
+  if(fn) fn(id);
+}
+export function multiSelectHTML(name, options, selectedIds, placeholder, emptyHTML){
+  const selSet=new Set(selectedIds||[]);
+  const selNames=options.filter(o=>selSet.has(o.id)).map(o=>o.name);
+  const label=selNames.length ? selNames.join(", ") : placeholder;
+  const opts=options.length
+    ? options.map(o=>`
+        <button type="button" class="sel-opt${selSet.has(o.id)?" on":""}" onclick="toggleMultiSel('${name}','${o.id}')">
+          <span class="tick">✓</span><span>${esc(o.name)}</span>
+        </button>`).join("")
+    : `<div class="empty">${emptyHTML||"Жагсаалт хоосон байна"}</div>`;
+  return `
+    <button type="button" class="sel-head${selNames.length?"":" ph"}" onclick="toggleSel('${name}')">
+      <span class="sel-val">${esc(label)}</span><span class="caret">▼</span>
+    </button>
+    <div class="sel-body">${opts}</div>`;
+}
+
 /* Гадна талд дархад нээлттэй сонголтыг хаана */
 document.addEventListener("click", e=>{
   if(window.__openSel && e.target.closest && !e.target.closest(".sel")) closeAllSel();
 });
 
-/* Байгууллага сонгох нийтлэг жагсаалт — Гаргах, Худалдан авах хоёрт ижил */
+/* Таблет дээр дэлгэцийн гар өөрөө хураагддаггүй тул гар дээрх Enter /
+   Done товчоор талбараас гарч, гарыг хаана. */
+const KB_TAGS=["INPUT","TEXTAREA","SELECT"];
+
+export function closeKeyboard(){
+  const a=document.activeElement;
+  if(!a || KB_TAGS.indexOf(a.tagName)<0) return;
+  /* Android-ийн зарим гар зөвхөн blur()-ээр хураагддаггүй — түр
+     readonly болгож өгвөл найдвартай хаагдана. */
+  const ro=a.hasAttribute("readonly");
+  if(!ro) a.setAttribute("readonly","readonly");
+  a.blur();
+  if(!ro) setTimeout(()=>a.removeAttribute("readonly"),150);
+}
+
+document.addEventListener("keydown", e=>{
+  if(e.key!=="Enter") return;
+  const a=e.target;
+  if(KB_TAGS.indexOf(a.tagName)<0 || a.tagName==="TEXTAREA") return;
+  if(a.closest && a.closest(".code-inputs")) return;   /* нэвтрэх код өөрөө боловсруулна */
+  e.preventDefault();
+  closeKeyboard();
+});
+
+/* Хүлээн авагч/нийлүүлэгч сонголт — эхлээд "Хувь хүн" эсвэл "Байгууллага"
+   ангилал сонгуулаад, дараа нь тухайн ангиллын жагсаалтыг харуулна.
+   Гаргах, Худалдан авах хоёрт ижил ашиглагдана. */
 export function orgOptions(partners){
-  return partners.map(p=>({id:p.id,name:p.name}))
-    .concat([{id:"__person",name:"Хувь хүн"},{id:"__addorg",name:"＋ Шинэ байгууллага нэмэх"}]);
+  return [{id:"__addorg",name:"＋ Шинэ байгууллага нэмэх"}]
+    .concat(partners.map(p=>({id:p.id,name:p.name})));
+}
+export function personOptions(persons){
+  return [{id:"__addperson",name:"＋ Шинэ хувь хүн нэмэх"}]
+    .concat(persons.map(p=>({id:p.id,name:p.name})));
+}
+/* kind: null (ангилал сонгоогүй), "person", "org" */
+export function partyOptions(kind, orgs, persons){
+  if(kind==="person") return [{id:"__back",name:"◀ Ангилал солих"}].concat(personOptions(persons));
+  if(kind==="org")    return [{id:"__back",name:"◀ Ангилал солих"}].concat(orgOptions(orgs));
+  return [{id:"__kind_person",name:"Хувь хүн"},{id:"__kind_org",name:"Байгууллага"}];
+}
+export function partyPlaceholder(kind){
+  if(kind==="person") return "Хувь хүн сонгоно уу";
+  if(kind==="org")    return "Байгууллага сонгоно уу";
+  return "Хувь хүн эсвэл байгууллага";
 }
