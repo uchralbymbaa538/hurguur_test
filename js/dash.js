@@ -1,22 +1,12 @@
-/* Хяналтын самбар — өдрийн зураглал */
 import { db, state } from './state.js';
-import { esc, num, isoStr, timeStr, dateStr, dayKey, dayKeyOfIso,
-         qtyLine, itemName, money, liveItems, workerName,
-         payFor, lQty, lUnit, uShort, stock, fridgeName, hasKg, hasPcs } from './util.js';
+import { esc, num, isoStr, isoMonth, timeStr, dateStr, dayKey, dayKeyOfIso,
+         monthKey, monthKeyOfIso, qtyLine, itemName, money, liveItems, workerName,
+         lQty, lUnit, uShort, stock, fridgeName, mainUnitOf } from './util.js';
 import { $, toast } from './ui.js';
 import { show, registerScreen } from './router.js';
 import { requireOnline } from './auth.js';
 
 const DASH = () => state.dash;
-
-/* Сонгосон огноог өнөөдөр/өчигдөртэй харьцуулж тохирох гарчиг өгнө */
-function dayLabel(){
-  const iso=DASH().date||isoStr();
-  if(iso===isoStr()) return "Өнөөдөр";
-  const y=new Date(); y.setDate(y.getDate()-1);
-  if(iso===isoStr(y)) return "Өчигдөр";
-  return dateStr(new Date(iso+"T00:00:00"));
-}
 
 export function openDash(){
   if(!state.isAdmin){ toast("Энэ хэсэг зөвхөн админд нээлттэй"); return; }
@@ -29,86 +19,91 @@ export function openDash(){
 export function setDashDate(v){ DASH().date = v || isoStr(); renderDash(); }
 export function toggleDashOrg(k){ DASH().openOrg = DASH().openOrg===k ? null : k; renderDash(); }
 
-/* ---------- Барааны түүх ---------- */
-function stockAtBoth(fid,itemId,ts){
-  let kg=0,pcs=0;
+function stockMapAt(ts,fids){
+  const map={};
   db.log.forEach(e=>{
-    if(e.fridge!==fid || e.item!==itemId || e.ts>ts) return;
+    if(e.ts>ts) return;
+    if(fids && fids.indexOf(e.fridge)<0) return;
+    const c = map[e.item] = map[e.item] || {kg:0,pcs:0};
     const s=e.action==="in"?1:-1;
-    kg+=s*(e.kg||0); pcs+=s*(e.pcs||0);
+    c.kg+=s*(e.kg||0); c.pcs+=s*(e.pcs||0);
   });
-  return {kg:num(kg), pcs:pcs};
+  return map;
+}
+function qtyFromMap(map,itemId){
+  const c=map[itemId];
+  if(!c) return 0;
+  return mainUnitOf(itemId)==="pcs" ? c.pcs : num(c.kg);
 }
 
 const IH = () => state.itemHist;
+
 export function openItemHist(itemId){
   IH().item=itemId;
-  const d = DASH().date || isoStr();
+  const d=DASH().date||isoStr();
   IH().from = IH().from || d;
   IH().to   = IH().to   || d;
-  const f=$("ihFrom"), t=$("ihTo");
-  f.value=IH().from; f.max=isoStr();
-  t.value=IH().to;   t.max=isoStr();
+  $("ihFrom").value=IH().from; $("ihFrom").max=isoStr();
+  $("ihTo").value=IH().to;     $("ihTo").max=isoStr();
   renderItemHist(); show("scrItemHist");
 }
 export function setItemHistFrom(v){
   IH().from = v || isoStr();
-  if(IH().from > IH().to){ IH().to = IH().from; $("ihTo").value=IH().to; }
+  if(IH().to < IH().from){ IH().to=IH().from; $("ihTo").value=IH().to; }
   renderItemHist();
 }
 export function setItemHistTo(v){
   IH().to = v || isoStr();
-  if(IH().to < IH().from){ IH().from = IH().to; $("ihFrom").value=IH().from; }
+  if(IH().to < IH().from){ IH().from=IH().to; $("ihFrom").value=IH().from; }
   renderItemHist();
 }
+function dayStartTs(iso){ return new Date(iso+"T00:00:00").getTime(); }
+function dayEndTs(iso){ return new Date(iso+"T23:59:59.999").getTime(); }
+
 export function renderItemHist(){
   const id=IH().item;
   if(!id){ show("scrDash"); return; }
   $("ihTitle").textContent=itemName(id);
-  const fromIso=IH().from||isoStr(), toIso=IH().to||isoStr();
-  const fromTs=new Date(fromIso+"T00:00:00").getTime();
-  const toTs=new Date(toIso+"T23:59:59").getTime();
-  const oneDay=fromIso===toIso;
-  const label = oneDay ? dateStr(new Date(fromIso+"T00:00:00"))
-    : dateStr(new Date(fromIso+"T00:00:00"))+" – "+dateStr(new Date(toIso+"T00:00:00"));
+  const u=uShort(mainUnitOf(id));
+  const from=dayStartTs(IH().from), to=dayEndTs(IH().to);
 
-  let openKg=0, openPcs=0;
-  db.fridges.forEach(fr=>{
-    const s=stockAtBoth(fr.id,id,fromTs-1);
-    openKg+=s.kg; openPcs+=s.pcs;
-  });
+  const opening=qtyFromMap(stockMapAt(from-1),id);
 
-  const rows=db.log.filter(e=>e.item===id && e.ts>=fromTs && e.ts<=toTs).sort((a,b)=>a.ts-b.ts);
+  const rows=db.log.filter(e=>e.item===id && e.ts>=from && e.ts<=to).sort((a,b)=>a.ts-b.ts);
+  const label = IH().from===IH().to
+    ? dateStr(new Date(from))
+    : dateStr(new Date(from))+" — "+dateStr(new Date(to));
+
   if(!rows.length){
-    $("ihBody").innerHTML=`<div class="card"><div class="empty">${oneDay?"Энэ өдөр":"Энэ хугацаанд"} хөдөлгөөн байхгүй.<br>
-      Эхний үлдэгдэл: <b>${qtyLine(openKg,openPcs,id)}</b></div></div>`;
+    $("ihBody").innerHTML=`<div class="card"><h3>${label}</h3>
+      <div class="item-row"><span class="item-name">Эхний үлдэгдэл</span>
+        <span class="item-val">${num(opening)} ${u}</span></div>
+      <div class="empty">Энэ хугацаанд хөдөлгөөн байхгүй</div></div>`;
     return;
   }
-  let runKg=num(openKg), runPcs=openPcs, tinKg=0, tinPcs=0, toutKg=0, toutPcs=0;
+  let run=num(opening), tin=0, tout=0;
   const body=rows.map(e=>{
-    const kg=e.kg||0, pcs=e.pcs||0;
+    const q = mainUnitOf(id)==="pcs" ? (e.pcs||0) : num(e.kg||0);
     const isIn = e.action==="in";
-    runKg = num(runKg + (isIn?kg:-kg));
-    runPcs = runPcs + (isIn?pcs:-pcs);
-    if(isIn){ tinKg+=kg; tinPcs+=pcs; } else { toutKg+=kg; toutPcs+=pcs; }
-    const src = isIn ? (e.purchase?"Гаднаас авсан":("Оруулсан"+(e.worker?" · "+workerName(e.worker):"")))
+    run = num(run + (isIn?q:-q));
+    if(isIn) tin+=q; else tout+=q;
+    const src = isIn ? (e.purchase?"Гаднаас авсан":("Оруулсан"+(e.by?" · "+workerName(e.by):"")))
                      : (e.receipt?"Гаргасан · баримттай":"Гаргасан");
     return `<tr>
       <td class="dim">${dateStr(new Date(e.ts))}<div class="dim">${timeStr(new Date(e.ts))}</div></td>
       <td class="nm">${esc(fridgeName(e.fridge))}<div class="dim">${esc(src)}</div></td>
-      <td class="num" style="color:${isIn?"var(--moss)":"var(--rust)"}">${isIn?"+":"−"}${qtyLine(kg,pcs,id)}</td>
-      <td class="amt">${qtyLine(runKg,runPcs,id)}</td></tr>`;
+      <td class="num" style="color:${isIn?"var(--moss)":"var(--rust)"}">${isIn?"+":"−"}${q}</td>
+      <td class="amt">${run}</td></tr>`;
   }).join("");
 
-  $("ihBody").innerHTML=`<div class="card">
-    <h3>${label}</h3>
-    <div class="item-row"><span class="item-name">Эхэнд</span>
-      <span class="item-val">${qtyLine(openKg,openPcs,id)}</span></div>
+  $("ihBody").innerHTML=`<div class="card"><h3>${label}</h3>
+    <div class="item-row"><span class="item-name">Эхний үлдэгдэл</span>
+      <span class="item-val">${num(opening)} ${u}</span></div>
     <div class="item-row"><span class="item-name">Орсон</span>
-      <span class="item-val mv-in">+${qtyLine(tinKg,tinPcs,id)}</span></div>
+      <span class="item-val mv-in">+${num(tin)} ${u}</span></div>
     <div class="item-row"><span class="item-name">Гарсан</span>
-      <span class="item-val mv-out">−${qtyLine(toutKg,toutPcs,id)}</span></div>
-    <div class="total-line"><span>Эцэст</span><b>${qtyLine(runKg,runPcs,id)}</b></div>
+      <span class="item-val mv-out">−${num(tout)} ${u}</span></div>
+    <div class="total-line"><span>Эцсийн үлдэгдэл</span><b>${run} ${u}</b></div>
   </div>
   <div class="card"><h3>Хөдөлгөөн бүрээр</h3>
     <div class="tbl-wrap"><table class="tbl" style="min-width:360px">
@@ -119,46 +114,29 @@ registerScreen("scrItemHist", renderItemHist);
 
 export function renderDash(){
   const dk=dayKeyOfIso(DASH().date||isoStr());
-  const lbl=dayLabel();
-  $("dashInTitle").textContent   = lbl+" орсон";
-  $("dashOutTitle").textContent  = lbl+" гарсан";
-  $("dashDestTitle").textContent = "Хаашаа гарсан · "+lbl;
 
-  /* Сонгосон өдрийн эцсийн үлдэгдэл ба тэр өдрийн өмнөх үлдэгдэл.
-     Барааны нэр дээр дарвал тухайн барааны түүх нээгдэнэ. */
   const dayEnd=new Date(DASH().date+"T23:59:59").getTime();
   const dayStart=new Date(DASH().date+"T00:00:00").getTime();
-  const rows=liveItems().map(it=>{
-    let bKg=0,bPcs=0,aKg=0,aPcs=0;
-    db.fridges.forEach(fr=>{
-      if((it.fridges||[1,2]).indexOf(fr.id)<0) return;
-      const b=stockAtBoth(fr.id,it.id,dayStart), a=stockAtBoth(fr.id,it.id,dayEnd);
-      bKg+=b.kg; bPcs+=b.pcs; aKg+=a.kg; aPcs+=a.pcs;
-    });
-    return {it, bKg:num(bKg), bPcs, aKg:num(aKg), aPcs};
-  }).filter(r=>r.bKg||r.bPcs||r.aKg||r.aPcs);
+  const beforeMap=stockMapAt(dayStart), afterMap=stockMapAt(dayEnd);
+  const rows=liveItems().map(it=>({
+    it,
+    before:qtyFromMap(beforeMap,it.id),
+    after: qtyFromMap(afterMap, it.id)
+  })).filter(r=>r.before||r.after);
 
-  $("dashStock").innerHTML = rows.length ? `<div class="tbl-wrap"><table class="tbl" style="min-width:560px">
-      <thead><tr><th>Бараа</th>
-        <th class="num">Өмнөх кг</th><th class="num">Өмнөх ш</th>
-        <th class="num">Өөрчлөлт кг</th><th class="num">Өөрчлөлт ш</th>
-        <th class="num">Үлдэгдэл кг</th><th class="num">Үлдэгдэл ш</th></tr></thead>
+  $("dashStock").innerHTML = rows.length ? `<div class="tbl-wrap"><table class="tbl" style="min-width:330px">
+      <thead><tr><th>Бараа</th><th class="num">Өмнөх</th><th class="num">Өөрчлөлт</th><th class="num">Үлдэгдэл</th></tr></thead>
       <tbody>${rows.map(r=>{
-        const id=r.it.id, dKg=num(r.aKg-r.bKg), dPcs=r.aPcs-r.bPcs;
-        const colKg =dKg>0 ?"var(--moss)":(dKg<0 ?"var(--rust)":"var(--muted)");
-        const colPcs=dPcs>0?"var(--moss)":(dPcs<0?"var(--rust)":"var(--muted)");
-        return `<tr style="cursor:pointer" onclick="openItemHist('${id}')">
+        const d=num(r.after-r.before);
+        const col=d>0?"var(--moss)":(d<0?"var(--rust)":"var(--muted)");
+        return `<tr style="cursor:pointer" onclick="openItemHist('${r.it.id}')">
           <td class="nm">${esc(r.it.name)} <span class="dim">›</span></td>
-          <td class="num dim">${hasKg(id)?r.bKg:"—"}</td>
-          <td class="num dim">${hasPcs(id)?r.bPcs:"—"}</td>
-          <td class="num" style="color:${colKg}">${hasKg(id)?(dKg>0?"+":"")+(dKg||"—"):"—"}</td>
-          <td class="num" style="color:${colPcs}">${hasPcs(id)?(dPcs>0?"+":"")+(dPcs||"—"):"—"}</td>
-          <td class="amt">${hasKg(id)?r.aKg:"—"}</td>
-          <td class="amt">${hasPcs(id)?r.aPcs:"—"}</td></tr>`;
+          <td class="num dim">${r.before}</td>
+          <td class="num" style="color:${col}">${d>0?"+":""}${d||"—"}</td>
+          <td class="amt">${r.after} ${uShort(mainUnitOf(r.it.id))}</td></tr>`;
       }).join("")}</tbody></table></div>`
     : `<div class="empty">Хөргүүрүүд хоосон байна</div>`;
 
-  /* Тухайн өдөр орсон */
   const inn={};
   db.log.forEach(e=>{
     if(e.action!=="in" || dayKey(e.ts)!==dk) return;
@@ -177,7 +155,6 @@ export function renderDash(){
       <span class="item-val mv-in">+${qtyLine(t.wkg+t.bkg,t.wpcs+t.bpcs,k)}</span></div>`;
   }).join("") : `<div class="empty">Энэ өдөр бараа ороогүй байна</div>`;
 
-  /* Тухайн өдөр гарсан */
   const out={};
   db.log.forEach(e=>{
     if(e.action!=="out" || dayKey(e.ts)!==dk) return;
@@ -190,7 +167,6 @@ export function renderDash(){
       <span class="item-val mv-out">−${qtyLine(out[k].kg,out[k].pcs,k)}</span></div>`).join("")
     : `<div class="empty">Энэ өдөр бараа гараагүй байна</div>`;
 
-  /* Хаашаа гарсан — нэг байгууллага нэг мөр, дарвал задарна */
   const rcs=db.receipts.filter(r=>dayKey(r.ts)===dk).sort((a,b)=>b.ts-a.ts);
   const gr={};
   rcs.forEach(r=>{
@@ -223,18 +199,5 @@ export function renderDash(){
   }).join("") : `<div class="empty">Энэ өдөр баримт гараагүй байна</div>`)
   + (gk.length?`<div class="total-line"><span>Борлуулалт</span><b>${money(sold)}</b></div>`:"");
 
-  /* Ажилчдын цалин */
-  const pay={};
-  db.log.forEach(e=>{
-    if(e.action!=="in" || !e.worker || dayKey(e.ts)!==dk) return;
-    pay[e.worker]=(pay[e.worker]||0)+payFor(e);
-  });
-  const pk=Object.keys(pay);
-  const ptot=pk.reduce((s,k)=>s+pay[k],0);
-  $("dashPay").innerHTML = (pk.length ? pk.map(k=>`
-    <div class="item-row"><span class="item-name">${esc(workerName(k))}</span>
-      <span class="item-val">${money(pay[k])}</span></div>`).join("")
-    : `<div class="empty">Энэ өдөр цалин бодогдоогүй байна</div>`)
-  + (pk.length?`<div class="total-line"><span>Нийт</span><b>${money(ptot)}</b></div>`:"");
 }
 registerScreen("scrDash", renderDash);
