@@ -7,6 +7,7 @@ import * as Picker   from './picker.js';
 import * as Auth     from './auth.js';
 import * as Fridge   from './fridge.js';
 import * as Entry    from './entry.js';
+import * as Work     from './work.js';
 import * as Buy      from './buy.js';
 import * as Out      from './out.js';
 import * as Receipt  from './receipt.js';
@@ -17,10 +18,13 @@ import * as Salary   from './salary.js';
 import * as Settings from './settings.js';
 
 loadLocal();
+
 Object.assign(window,
-  { show:Router.show, toggleSel:UI.toggleSel, chooseSel:UI.chooseSel },
+  { show:Router.show, toggleSel:UI.toggleSel, chooseSel:UI.chooseSel,
+    toggleMultiSel:UI.toggleMultiSel, closeKeyboard:UI.closeKeyboard },
   { pickToggle:Picker.pickToggle, pickSet:Picker.pickSet, pickAll:Picker.pickAll },
-  Auth, Fridge, Entry, Buy, Out, Receipt, Dash, Debt, Records, Salary, Settings
+  Auth, Fridge, Entry, Work, Buy, Out, Receipt, Dash, Debt, Records, Salary, Settings
 );
+
 Auth.initLogin();
 Auth.renderHome();
