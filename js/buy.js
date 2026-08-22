@@ -3,10 +3,11 @@
 import { db, state, uid, saveLocal } from './state.js';
 import { esc, f, int, num, isoStr, tsOfIso, itemName, itemBuyPrice, money,
          hasKg, hasPcs, mainUnitOf, uShort, isSack, sackNote, fridgeName } from './util.js';
-import { $, toast, selectHTML, orgOptions, onChoose } from './ui.js';
+import { $, toast, selectHTML, partyOptions, partyPlaceholder, onChoose } from './ui.js';
 import { show } from './router.js';
 import { registerPicker, renderPicker, qtyOf } from './picker.js';
 import { fbSet, save, pushSettings, nextNo } from './sync.js';
+import { requireOnline } from './auth.js';
 import { openFridge } from './fridge.js';
 
 const B = () => state.buy;
@@ -26,9 +27,10 @@ registerPicker("buy",{
 });
 
 export function openBuy(){
+  if(!requireOnline()) return;
   if(!state.isAdmin){ toast("Энэ хэсэг зөвхөн админд нээлттэй"); return; }
   state.buy={ date:isoStr(), fridge:state.curFridge||1, supplier:null,
-              supName:"", supPhone:"", items:{}, prices:{} };
+              supplierKind:null, items:{}, prices:{} };
   const d=$("buyDate"); d.value=B().date; d.max=isoStr();
   $("bpName").value=""; $("bpPhone").value="";
   $("buyBtn1").textContent=fridgeName(1);
@@ -44,10 +46,16 @@ export function setBuyFridge(id,btn){
   renderBuy();
 }
 onChoose.supplier = id => {
-  B().supplier=id; renderBuy();
-  if(id==="__addorg") setTimeout(()=>$("bsName").focus(),50);
+  const b=B();
+  if(id==="__kind_person"){ b.supplierKind="person"; b.supplier=null; renderBuy(); return; }
+  if(id==="__kind_org")   { b.supplierKind="org";    b.supplier=null; renderBuy(); return; }
+  if(id==="__back")       { b.supplierKind=null;     b.supplier=null; renderBuy(); return; }
+  b.supplier=id; renderBuy();
+  if(id==="__addorg")    setTimeout(()=>$("bsName").focus(),50);
+  if(id==="__addperson") setTimeout(()=>$("bpName").focus(),50);
 };
 export function addSupplierInline(){
+  if(!requireOnline()) return;
   const n=$("bsName").value.trim();
   if(!n){ toast("Байгууллагын нэрийг бичнэ үү"); return; }
   const p={id:uid(),name:n,reg:$("bsReg").value.trim(),phone:$("bsPhone").value.trim()};
@@ -56,10 +64,25 @@ export function addSupplierInline(){
   B().supplier=p.id; renderBuy();
   toast(n+" нэмэгдэж сонгогдлоо");
 }
+export function addSupplierPersonInline(){
+  if(!requireOnline()) return;
+  const n=$("bpName").value.trim();
+  if(!n){ toast("Хувь хүний нэрийг бичнэ үү"); return; }
+  db.persons=db.persons||[];
+  const p=db.persons.find(x=>x.name.toLowerCase()===n.toLowerCase())
+       || {id:uid(),name:n,phone:$("bpPhone").value.trim()};
+  if(db.persons.indexOf(p)<0) db.persons.push(p);
+  else if(!p.phone) p.phone=$("bpPhone").value.trim();
+  save();
+  $("bpName").value=""; $("bpPhone").value="";
+  B().supplier=p.id; B().supplierKind="person"; renderBuy();
+  toast(n+" нэмэгдэж сонгогдлоо");
+}
 export function renderBuy(){
-  $("sel_supplier").innerHTML=selectHTML("supplier",orgOptions(db.partners),B().supplier,"Байгууллага эсвэл хувь хүн");
-  $("buyOrgBox").style.display    = B().supplier==="__addorg" ? "block" : "none";
-  $("buyPersonBox").style.display = B().supplier==="__person" ? "block" : "none";
+  const b=B();
+  $("sel_supplier").innerHTML=selectHTML("supplier",partyOptions(b.supplierKind,db.partners,db.persons),b.supplier,partyPlaceholder(b.supplierKind));
+  $("buyOrgBox").style.display    = b.supplier==="__addorg" ? "block" : "none";
+  $("buyPersonBox").style.display = b.supplier==="__addperson" ? "block" : "none";
   renderPicker("buy"); renderBuyTotal();
 }
 export function setBuyPrice(id,v){
@@ -82,19 +105,19 @@ export function renderBuyTotal(){
 }
 
 export async function saveBuy(){
+  if(!requireOnline()) return;
   if(state.busy.buy) return;
   const b=B();
   const ids=Object.keys(b.items).filter(id=>buyQty(id)>0);
   if(!ids.length){ toast("Бараа болон хэмжээг нь оруулна уу"); return; }
-  if(!b.supplier || b.supplier==="__addorg"){ toast("Хэнээс авснаа сонгоно уу"); return; }
-  if(b.supplier==="__person" && !b.supName.trim()){ toast("Хувь хүний нэрийг бичнэ үү"); return; }
+  if(!b.supplier || b.supplier==="__addorg" || b.supplier==="__addperson"){ toast("Хэнээс авснаа сонгоно уу"); return; }
 
   state.busy.buy=true;
   const btn=$("buySave"); const label=btn?btn.textContent:"";
   if(btn){ btn.disabled=true; btn.textContent="Хадгалж байна…"; }
   try{
-    const sup = b.supplier==="__person"
-      ? {name:b.supName.trim(),reg:"",phone:b.supPhone.trim(),type:"person",pid:null}
+    const sup = b.supplierKind==="person"
+      ? (p=>({name:p.name,reg:"",phone:p.phone||"",type:"person",pid:p.id}))(db.persons.find(x=>x.id===b.supplier)||{name:"—",phone:""})
       : (p=>({name:p.name,reg:p.reg||"",phone:p.phone||"",type:"org",pid:p.id}))(db.partners.find(x=>x.id===b.supplier));
 
     const ts=tsOfIso(b.date);
@@ -130,7 +153,3 @@ export async function saveBuy(){
     const x=$("buySave"); if(x){ x.disabled=false; x.textContent=label||"Хадгалах"; }
   }
 }
-
-/* Хувь хүнээс авах үеийн нэр, утас */
-export function buySupName(v){ B().supName=v; }
-export function buySupPhone(v){ B().supPhone=v; }
