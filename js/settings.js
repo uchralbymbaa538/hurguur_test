@@ -5,10 +5,11 @@ import { esc, f, int, money, itemName, workerName, liveItems, liveWorkers,
          payUnitOf, mainUnitOf, uShort, uLabel, rateOf, fridgeName } from './util.js';
 import { $, toast, selectHTML, onChoose } from './ui.js';
 import { show } from './router.js';
-import { save, fbSet, fbDel, pushSettings } from './sync.js';
-import { renderHome } from './auth.js';
+import { save, fbSet, fbDel, pushSettings, getBackupPin, setBackupPin } from './sync.js';
+import { renderHome, requireOnline } from './auth.js';
 
 export function openAdmin(){
+  if(!requireOnline()) return;
   if(!state.isAdmin){ toast("Энэ хэсэг зөвхөн админд нээлттэй"); return; }
   show("scrAdmin");
 }
@@ -61,12 +62,14 @@ export function setTrack(id,v){
 }
 export function setPayUnit(id,v){ const it=db.items.find(i=>i.id===id); if(it){ it.payUnit=v; save(); renderItems(); } }
 export function addItem(){
+  if(!requireOnline()) return;
   const n=$("newItemName").value.trim();
   if(!n){ toast("Барааны нэрийг бичнэ үү"); return; }
   db.items.push({id:uid(),name:n,track:"both",payUnit:"kg",price:0,buyPrice:0,defRate:0,perSack:0,fridges:[1,2]});
   $("newItemName").value=""; save(); renderItems(); toast(n+" нэмэгдлээ");
 }
 export function delItem(id){
+  if(!requireOnline()) return;
   if(!confirm(itemName(id)+" -г жагсаалтаас хасах уу?")) return;
   const used=db.log.some(e=>e.item===id);
   if(used) db.items.find(i=>i.id===id).hidden=true;   /* хуучин бүртгэл хэвээр үлдэнэ */
@@ -137,6 +140,7 @@ export function toggleWorkerFixed(id){
 export function setWorkerSalary(id,v){ const w=db.workers.find(x=>x.id===id); if(w){ w.salary=f(v); save(); } }
 
 export function addWorker(){
+  if(!requireOnline()) return;
   const n=$("newWorkerName").value.trim();
   if(!n){ toast("Ажилчны нэрийг бичнэ үү"); return; }
   const rates={}; db.items.forEach(i=>rates[i.id]=+i.defRate||0);
@@ -144,6 +148,7 @@ export function addWorker(){
   $("newWorkerName").value=""; save(); renderWorkers(); toast(n+" нэмэгдлээ");
 }
 export function delWorker(id){
+  if(!requireOnline()) return;
   if(!confirm(workerName(id)+" -г хасах уу?")) return;
   const used=db.log.some(e=>e.worker===id) || db.receipts.some(r=>r.issuer===id);
   if(used) db.workers.find(w=>w.id===id).hidden=true;  /* цалингийн түүх хэвээр үлдэнэ */
@@ -179,26 +184,89 @@ export function setRate(wid,iid,v){
   w.rates=w.rates||{}; w.rates[iid]=f(v); save();
 }
 
-/* ---------- Харилцагч ---------- */
-export function openPartners(){ renderPartners(); show("scrPartners"); }
+/* ---------- Харилцагч ----------
+   Байгууллага, хувь хүн хоёр тусдаа бүлэг. Нэр дээр нь дарвал доошоо
+   задарч, тэндээсээ шинийг нэмэх, хуучныг хасах боломжтой.
+   Гаргах, Худалдан авах дээр шинээр бичсэн хувь хүн энд өөрөө орж ирнэ. */
+export function openPartners(){ state.partyOpen=null; renderPartners(); show("scrPartners"); }
+export function togglePartyGroup(k){
+  state.partyOpen = state.partyOpen===k ? null : k;
+  renderPartners();
+}
+
+function groupHead(key,title,count,open){
+  return `<button type="button" class="exp-head" onclick="togglePartyGroup('${key}')">
+    <span class="exp-arrow">${open?"▾":"▸"}</span>
+    <span class="exp-main">${title}<small>${count} бүртгэлтэй</small></span>
+    <span class="exp-val">${open?"":"›"}</span></button>`;
+}
+
 export function renderPartners(){
-  $("partnersEdit").innerHTML = db.partners.length ? db.partners.map(p=>`
-    <div class="edit-row"><span class="nm">${esc(p.name)}
-      ${(p.reg||p.phone)?`<small>${esc([p.reg,p.phone].filter(Boolean).join(" · "))}</small>`:""}</span>
-      <button class="icon-btn" onclick="delPartner('${p.id}')">Хасах</button></div>`).join("")
-    : `<div class="empty">Харилцагч нэмээгүй байна</div>`;
+  db.persons = db.persons || [];
+  const open=state.partyOpen;
+  let h=groupHead("org","Байгууллага",db.partners.length,open==="org");
+  if(open==="org"){
+    h+=`<div class="exp-body">`;
+    h+= db.partners.length ? db.partners.map(p=>`
+      <div class="edit-row"><span class="nm">${esc(p.name)}
+        ${(p.reg||p.phone)?`<small>${esc([p.reg,p.phone].filter(Boolean).join(" · "))}</small>`:""}</span>
+        <button class="icon-btn" onclick="delPartner('${p.id}')">Хасах</button></div>`).join("")
+      : `<div class="empty">Байгууллага нэмээгүй байна</div>`;
+    h+=`<div class="add-row" style="display:block;margin-top:12px">
+      <input type="text" id="npName" placeholder="Байгууллагын нэр" style="width:100%;margin-bottom:9px">
+      <input type="text" id="npReg" placeholder="Регистрийн дугаар" style="width:100%;margin-bottom:9px">
+      <input type="tel"  id="npPhone" placeholder="Утас" style="width:100%;margin-bottom:12px">
+      <button class="btn btn-in btn-sm" onclick="addPartner()">Нэмэх</button></div></div>`;
+  }
+  h+=groupHead("person","Хувь хүн",db.persons.length,open==="person");
+  if(open==="person"){
+    h+=`<div class="exp-body">`;
+    h+= db.persons.length ? db.persons.map(p=>`
+      <div class="edit-row"><span class="nm">${esc(p.name)}
+        ${p.phone?`<small>${esc(p.phone)}</small>`:""}</span>
+        <button class="icon-btn" onclick="delPerson('${p.id}')">Хасах</button></div>`).join("")
+      : `<div class="empty">Хувь хүн нэмээгүй байна.<br>Гаргах дээр бичсэн хүн энд өөрөө нэмэгдэнэ.</div>`;
+    h+=`<div class="add-row" style="display:block;margin-top:12px">
+      <input type="text" id="npPersonName" placeholder="Хувь хүний нэр" style="width:100%;margin-bottom:9px">
+      <input type="tel"  id="npPersonPhone" placeholder="Утас" style="width:100%;margin-bottom:12px">
+      <button class="btn btn-in btn-sm" onclick="addPerson()">Нэмэх</button></div></div>`;
+  }
+  $("partyBox").innerHTML=h;
 }
 export function addPartner(){
+  if(!requireOnline()) return;
   const n=$("npName").value.trim();
   if(!n){ toast("Байгууллагын нэрийг бичнэ үү"); return; }
   db.partners.push({id:uid(),name:n,reg:$("npReg").value.trim(),phone:$("npPhone").value.trim()});
-  $("npName").value=""; $("npReg").value=""; $("npPhone").value="";
   save(); renderPartners(); toast(n+" нэмэгдлээ");
 }
 export function delPartner(id){
+  if(!requireOnline()) return;
   const p=db.partners.find(x=>x.id===id);
   if(!p || !confirm(p.name+" -г хасах уу?")) return;
   db.partners=db.partners.filter(x=>x.id!==id);
+  save(); renderPartners(); toast("Хаслаа");
+}
+export function addPerson(){
+  if(!requireOnline()) return;
+  const n=$("npPersonName").value.trim();
+  if(!n){ toast("Хувь хүний нэрийг бичнэ үү"); return; }
+  db.persons=db.persons||[];
+  if(db.persons.some(x=>x.name.toLowerCase()===n.toLowerCase())){ toast(n+" аль хэдийн бүртгэлтэй байна"); return; }
+  db.persons.push({id:uid(),name:n,phone:$("npPersonPhone").value.trim()});
+  save(); renderPartners(); toast(n+" нэмэгдлээ");
+}
+export function delPerson(id){
+  if(!requireOnline()) return;
+  const p=(db.persons||[]).find(x=>x.id===id);
+  if(!p) return;
+  const used = db.receipts.some(r=>r.buyer && r.buyer.pid===id)
+            || db.purchases.some(x=>x.supplier && x.supplier.pid===id);
+  const msg = used
+    ? p.name+" -г жагсаалтаас хасах уу?\nӨмнө гарсан баримт, өглөг авлага хэвээр үлдэнэ."
+    : p.name+" -г хасах уу?";
+  if(!confirm(msg)) return;
+  db.persons=db.persons.filter(x=>x.id!==id);
   save(); renderPartners(); toast("Хаслаа");
 }
 
@@ -211,6 +279,7 @@ export function openCompany(){
   show("scrCompany");
 }
 export function saveCompany(){
+  if(!requireOnline()) return;
   db.company={
     name:$("coName").value.trim(), phone:$("coPhone").value.trim(), reg:$("coReg").value.trim(),
     bank:$("coBank").value.trim(), account:$("coAccount").value.trim(), accountName:$("coAccName").value.trim()
@@ -221,20 +290,38 @@ export function saveCompany(){
 /* ---------- Код ---------- */
 export function openCodes(){ $("pinWorker").value=db.pin; $("pinAdmin").value=db.adminPin; show("scrCodes"); }
 export function savePins(){
+  if(!requireOnline()) return;
   const p=$("pinWorker").value.trim(), a=$("pinAdmin").value.trim();
   if(!/^\d{4}$/.test(p)||!/^\d{4}$/.test(a)){ toast("Код 4 оронтой тоо байх ёстой"); return; }
   if(p===a){ toast("Хоёр код өөр байх ёстой"); return; }
   db.pin=p; db.adminPin=a; save(); toast("Код солигдлоо");
 }
 
-/* ---------- Нөөцлөх ---------- */
-export function openBackup(){ $("bkText").value=JSON.stringify(db); show("scrBackup"); }
+/* ---------- Нөөцлөх ----------
+   Энэ хэсэгт бүх мэдээлэл ил гарах бөгөөд устгах товч ч бий тул
+   тусдаа кодоор хамгаална. Код нь зөвхөн Firebase дээр байдаг. */
+export function openBackup(){
+  if(!requireOnline()) return;
+  const v=prompt("Нөөцлөх хэсгийн код");
+  if(v===null) return;
+  if(v.trim()!==getBackupPin()){ toast("Код буруу байна"); return; }
+  $("bkText").value=JSON.stringify(db); show("scrBackup");
+}
+export function changeBackupPin(){
+  if(!requireOnline()) return;
+  const v=prompt("Шинэ код — 4 оронтой тоо", getBackupPin());
+  if(v===null) return;
+  const n=v.trim();
+  if(!/^\d{4}$/.test(n)){ toast("Код 4 оронтой тоо байх ёстой"); return; }
+  setBackupPin(n); toast("Код солигдлоо");
+}
 export function copyBackup(){
   const t=$("bkText"); t.select(); t.setSelectionRange(0,999999);
   try{ document.execCommand("copy"); toast("Хуулагдлаа"); }
   catch(e){ toast("Гараар сонгож хуулна уу"); }
 }
 export function restoreBackup(){
+  if(!requireOnline()) return;
   let d;
   try{ d=JSON.parse($("bkText").value); }
   catch(e){ toast("Нөөцийн бичвэр буруу байна"); return; }
@@ -249,16 +336,39 @@ export function restoreBackup(){
   toast("Сэргээлээ"); renderHome();
 }
 export function wipeAll(){
-  if(!confirm("Бүх орлого зарлага, баримт устана. Итгэлтэй байна уу?")) return;
+  if(!requireOnline()) return;
+  if(!confirm("Бүх орлого зарлага, баримт, цалингийн бүртгэл устана. Итгэлтэй байна уу?")) return;
   if(!confirm("Дахин баталгаажуулна уу — устгасан бүртгэл сэргэхгүй.")) return;
   const old={ log:db.log.slice(), receipts:db.receipts.slice(),
-              purchases:db.purchases.slice(), audits:db.audits.slice(), settlements:db.settlements.slice() };
-  db.log=[]; db.receipts=[]; db.purchases=[]; db.audits=[]; db.settlements=[];
+              purchases:db.purchases.slice(), audits:db.audits.slice(), settlements:db.settlements.slice(),
+              wagepays:db.wagepays.slice(), works:db.works.slice() };
+  db.log=[]; db.receipts=[]; db.purchases=[]; db.audits=[]; db.settlements=[]; db.wagepays=[]; db.works=[];
   saveLocal(); pushSettings();
   old.log.forEach(e=>fbDel("log",e.id));
   old.receipts.forEach(r=>fbDel("receipts",r.id));
   old.purchases.forEach(p=>fbDel("purchases",p.id));
   old.audits.forEach(a=>fbDel("audits",a.id));
   old.settlements.forEach(x=>fbDel("settlements",x.id));
+  old.wagepays.forEach(x=>fbDel("wagepays",x.id));
+  old.works.forEach(x=>fbDel("works",x.id));
   toast("Бүртгэл цэвэрлэгдлээ");
+}
+
+export function openDevice(){
+  if(!requireOnline()) return;
+  const box=$("devUid");
+  if(!box){ toast("Энэ хэсэг ачаалагдаагүй байна · index.html шинэчлэгдээгүй"); return; }
+  const uid=window.__uid;
+  box.textContent = uid || "Дугаар хараахан гараагүй байна · сервертэй холбогдохыг хүлээнэ үү";
+  show("scrDevice");
+}
+export function copyUid(){
+  const uid=window.__uid;
+  if(!uid){ toast("Дугаар хараахан гараагүй байна"); return; }
+  const ta=document.createElement("textarea");
+  ta.value=uid; ta.style.position="fixed"; ta.style.opacity="0";
+  document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0,999999);
+  try{ document.execCommand("copy"); toast("Хуулагдлаа"); }
+  catch(e){ toast("Гараар сонгож хуулна уу"); }
+  document.body.removeChild(ta);
 }
